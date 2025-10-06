@@ -1,686 +1,235 @@
-<!DOCTYPE html>
-<html lang="ar" dir="rtl">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Yazan Net | شبكة يزن - أدوات</title>
-    <!-- تحميل Firebase Libraries -->
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-        
-        // Expose Firebase functions globally for the main script
-        window.firebase = { initializeApp, getAuth, signInAnonymously, signInWithCustomToken, getFirestore };
-    </script>
-    <!-- تحميل Tailwind CSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <!-- تعيين خط Cairo وتهيئة الألوان -->
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap');
-        body {
-            font-family: 'Cairo', sans-serif;
-            background-color: #f0f4f8;
-            direction: rtl; 
-        }
-        /* تصميم فقاعات الدردشة */
-        .user-message {
-            background-color: #007bff; 
-            color: white;
-            border-radius: 20px 20px 5px 20px;
-        }
-        .ai-message {
-            background-color: #ffffff;
-            color: #333;
-            border-radius: 20px 20px 20px 5px;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-        }
-        /* تصميم مؤشر التحميل الدائري */
-        .loader {
-            border-top-color: #007bff;
-            -webkit-animation: spinner 0.8s linear infinite;
-            animation: spinner 0.8s linear infinite;
-        }
-        @-webkit-keyframes spinner {
-            0% { -webkit-transform: rotate(0deg); }
-            100% { -webkit-transform: rotate(360deg); }
-        }
-        @keyframes spinner {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-        /* تخصيص زر التنقل النشط */
-        .nav-btn.active {
-            background-color: #007bff;
-            color: white;
-            box-shadow: 0 4px 6px rgba(0, 123, 255, 0.3);
-        }
-    </style>
-</head>
-<body class="flex items-center justify-center min-h-screen p-4 sm:p-6">
+import React, { useState, useEffect } from 'react';
+import { GoogleGenAI } from '@google/genai';
+import { Category, Language } from '../types';
+import { CopyIcon, SparklesIcon, BackIcon, ContentIcon } from './icons';
+import { translations } from '../translations';
 
-    <!-- حاوية التطبيق الرئيسية -->
-    <div class="w-full max-w-4xl bg-white rounded-2xl shadow-2xl flex flex-col h-[90vh]">
+const LoadingSpinner: React.FC<{ text: string }> = ({ text }) => (
+    <div className="flex items-center justify-center gap-2 text-indigo-300">
+        <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg>
+        <span>{text}</span>
+    </div>
+);
 
-        <!-- رأس التطبيق ونظام التنقل -->
-        <header class="p-4 bg-gray-50 rounded-t-2xl shadow-sm border-b border-gray-200">
-            <h1 class="text-3xl font-bold text-[#007bff] mb-3 text-center">شبكة يزن (Yazan Net)</h1>
-            
-            <!-- أزرار التنقل بين الأدوات -->
-            <nav class="flex justify-center gap-4 flex-wrap">
-                <button id="nav-chat" data-view="chat" class="nav-btn active p-3 rounded-xl font-semibold text-gray-700 hover:bg-blue-100 transition duration-150">
-                    <span class="sm:inline hidden">إنشاء المحتوى وحل المسائل</span>
-                    <span class="sm:hidden">الدردشة والمحتوى</span>
-                </button>
-                <button id="nav-image" data-view="image-gen" class="nav-btn p-3 rounded-xl font-semibold text-gray-700 hover:bg-blue-100 transition duration-150">
-                    توليد الصور
-                </button>
-                <button id="nav-image-edit" data-view="image-edit" class="nav-btn p-3 rounded-xl font-semibold text-gray-700 hover:bg-blue-100 transition duration-150">
-                    تعديل الصور (Nano-Banana)
-                </button>
-            </nav>
-            
-            <!-- معلومات المستخدم (للتصحيح والامتثال لقواعد Firebase) -->
-             <div class="text-xs text-gray-500 mt-2 text-center">
-                <span class="font-bold">معرّف المستخدم:</span> <span id="user-id-display">...</span>
+interface IdeaGeneratorProps {
+  category: Category;
+  onBack: () => void;
+  language: Language;
+}
+
+const IdeaGenerator: React.FC<IdeaGeneratorProps> = ({ category, onBack, language }) => {
+  const t = translations[language];
+  const [currentIdea, setCurrentIdea] = useState<string>('');
+  const [usedIdeas, setUsedIdeas] = useState<Set<string>>(new Set());
+  const [showToast, setShowToast] = useState<boolean>(false);
+  const [key, setKey] = useState<number>(0);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [expandedContent, setExpandedContent] = useState<string>('');
+  const [error, setError] = useState<string>('');
+
+  // Effect for generating the initial idea when the category or language changes.
+  useEffect(() => {
+    const allIdeas = category.ideas[language];
+    if (!allIdeas || allIdeas.length === 0) {
+        setCurrentIdea(t.noIdeasInCategory);
+        setUsedIdeas(new Set());
+        return;
+    }
+
+    const firstIdea = allIdeas[Math.floor(Math.random() * allIdeas.length)];
+    setCurrentIdea(firstIdea);
+    setUsedIdeas(new Set([firstIdea]));
+    
+    // Reset other states
+    setExpandedContent('');
+    setError('');
+    setShowToast(false);
+    setKey(prevKey => prevKey + 1); // Animate first idea
+  }, [category, language]);
+
+
+  const handleGenerateNewIdea = () => {
+    setExpandedContent('');
+    setError('');
+
+    const allIdeas = category.ideas[language];
+    
+    let availableIdeas = allIdeas.filter(idea => !usedIdeas.has(idea));
+    let newUsedIdeasSet = new Set(usedIdeas);
+
+    // If all ideas have been used, reset the 'used' set and start over.
+    if (availableIdeas.length === 0) {
+        newUsedIdeasSet = new Set();
+        availableIdeas = allIdeas;
+    }
+
+    // Select a random idea from the available pool
+    const newIdea = availableIdeas[Math.floor(Math.random() * availableIdeas.length)];
+    
+    setCurrentIdea(newIdea);
+    
+    // Add the new idea to the set of used ideas for the next generation
+    newUsedIdeasSet.add(newIdea);
+    setUsedIdeas(newUsedIdeasSet);
+
+    setKey(prevKey => prevKey + 1);
+  };
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    setShowToast(true);
+    setTimeout(() => {
+      setShowToast(false);
+    }, 2000);
+  };
+
+  const handleExpandIdea = async () => {
+    if (!currentIdea) return;
+    setIsLoading(true);
+    setExpandedContent('');
+    setError('');
+
+    try {
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const prompt = `
+        أنت خبير في صناعة المحتوى لمنصة انستغرام. بالنظر إلى الفئة "${category.name['ar']}" والفكرة التالية: "${currentIdea}".
+
+        قم بإنشاء خطة محتوى مفصلة ومبتكرة يمكن استخدامها لإنشاء فيديو ريلز (Instagram Reel).
+
+        الخطة يجب أن تتضمن الأقسام التالية بوضوح:
+        1. **عنوان جذاب (Hook):** جملة قصيرة لجذب الانتباه في أول 3 ثوانٍ.
+        2. **السيناريو/الخطوات:** نص مقترح للفيديو، مقسم إلى مشاهد أو خطوات واضحة.
+        3. **اقتراحات بصرية:** أفكار حول كيفية تصوير كل مشهد، الزوايا، والانتقالات.
+        4. **نص إضافي (Overlay Text):** أي نصوص يمكن إضافتها على الفيديو للتوضيح.
+        5. **صوت مقترح (Audio):** نوع الموسيقى أو الصوت الرائج (Trending Audio) الذي يناسب الفكرة.
+        6. **الكابشن (Caption):** نص للكابشن يتضمن سؤالاً للتفاعل.
+        7. **هاشتاجات:** 5 هاشتاجات ذات صلة.
+      `;
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: prompt,
+      });
+
+      setExpandedContent(response.text);
+
+    } catch (e) {
+      console.error(e);
+      setError(t.errorGeneratingContent);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const CategoryIcon = category.icon;
+
+  return (
+    <div className="flex flex-col items-center w-full">
+      {showToast && (
+        <div className="fixed top-5 right-5 bg-green-500 text-white py-2 px-4 rounded-lg shadow-lg animate-bounce z-50">
+          {t.ideaCopiedToast}
+        </div>
+      )}
+
+      <button
+        onClick={onBack}
+        className="self-start mb-8 flex items-center gap-2 text-indigo-300 hover:text-indigo-100 transition-colors duration-200"
+        disabled={isLoading}
+      >
+        <BackIcon className="w-5 h-5" />
+        <span>{t.backToCategories}</span>
+      </button>
+
+      <div className="w-full max-w-2xl bg-gray-800/60 backdrop-blur-md border border-gray-700/60 rounded-2xl p-6 md:p-10 text-center shadow-xl shadow-indigo-900/20">
+        <div className="flex justify-center items-center gap-4 mb-6">
+            <div className="flex items-center justify-center h-12 w-12 rounded-full bg-gradient-to-br from-purple-600 to-indigo-600">
+                <CategoryIcon className="h-7 w-7 text-white" />
             </div>
-        </header>
-
-        <!-- مؤشر التحميل (يظهر في كلا الأداتين) -->
-        <div id="loading-indicator" class="flex justify-center p-2 hidden">
-            <div class="loader ease-linear rounded-full border-4 border-t-4 border-gray-200 h-8 w-8"></div>
+            <h2 className="text-3xl font-bold text-gray-100">{category.name[language]}</h2>
         </div>
         
-        <!-- ============================================== -->
-        <!-- 1. أداة إنشاء المحتوى وحل المسائل (الدردشة) -->
-        <!-- ============================================== -->
-        <section id="chat-view" data-view="chat" class="flex flex-col flex-grow">
-            <!-- منطقة عرض الرسائل -->
-            <main id="chat-container" class="flex-grow p-4 sm:p-6 overflow-y-auto space-y-4">
-                <!-- رسالة الترحيب الأولية -->
-                <div class="flex justify-start">
-                    <div class="ai-message p-3 max-w-[85%]">
-                        <p>مرحباً! أنا <span class="font-bold text-[#007bff]">يزن نت</span>، جاهز لمساعدتك في إنشاء المحتوى أو حل المسائل.</p>
-                    </div>
-                </div>
-            </main>
-            
-            <!-- نموذج إرسال الرسائل -->
-            <form id="chat-form" class="p-4 border-t border-gray-200">
-                <div class="flex gap-2">
-                    <input
-                        type="text"
-                        id="chat-input"
-                        placeholder="اكتب استفسارك أو مسألتك هنا..."
-                        class="flex-grow p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#007bff] focus:border-[#007bff] transition duration-200"
-                        autocomplete="off"
-                    />
-                    <button
-                        type="submit"
-                        class="bg-[#007bff] text-white p-3 rounded-xl font-semibold hover:bg-blue-700 transition duration-200 disabled:opacity-50"
-                        id="chat-send-button"
+        <div className="min-h-[120px] flex items-center justify-center p-4 my-6 bg-gray-900/50 rounded-lg border border-gray-700">
+          <p key={key} className="text-2xl font-medium text-indigo-200 animate-fade-in">
+            {currentIdea}
+          </p>
+        </div>
+
+        <div className="flex flex-col sm:flex-row gap-4">
+          <button
+            onClick={() => copyToClipboard(currentIdea)}
+            disabled={isLoading || !currentIdea}
+            className="flex-1 flex items-center justify-center gap-2 bg-gray-700 hover:bg-gray-600 text-white font-semibold py-3 px-6 rounded-lg transition-colors duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <CopyIcon className="w-5 h-5" />
+            <span>{t.copyIdea}</span>
+          </button>
+          <button
+            onClick={handleGenerateNewIdea}
+            disabled={isLoading}
+            className="flex-1 flex items-center justify-center gap-2 bg-gray-700 hover:bg-gray-600 text-white font-semibold py-3 px-6 rounded-lg transition-colors duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <SparklesIcon className="w-5 h-5" />
+            <span>{t.newIdea}</span>
+          </button>
+        </div>
+         <div className="mt-4">
+            <button
+                onClick={handleExpandIdea}
+                disabled={isLoading || !currentIdea}
+                className="w-full flex items-center justify-center gap-3 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-300 transform hover:scale-105 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed disabled:scale-100"
+            >
+                <ContentIcon className="w-6 h-6" />
+                <span>{t.expandIdea}</span>
+            </button>
+        </div>
+      </div>
+      
+      <div className="w-full max-w-2xl mt-8">
+        {isLoading && <LoadingSpinner text={t.generatingContent} />}
+        {error && <p className="text-red-400 bg-red-900/50 border border-red-700 p-4 rounded-lg text-center">{error}</p>}
+        {expandedContent && (
+            <div className="bg-gray-800/40 backdrop-blur-md border border-gray-700/40 rounded-2xl p-6 md:p-8 text-right shadow-lg animate-fade-in">
+                <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-2xl font-bold text-indigo-200">{t.contentPlan}</h3>
+                    <button 
+                        onClick={() => copyToClipboard(expandedContent)}
+                        className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors p-2 rounded-md bg-gray-700/50 hover:bg-gray-700"
+                        aria-label="نسخ خطة المحتوى"
                     >
-                        إرسال
+                        <CopyIcon className="w-5 h-5" />
+                        <span>{t.copyContent}</span>
                     </button>
                 </div>
-            </form>
-        </section>
-
-        <!-- ============================================== -->
-        <!-- 2. أداة توليد الصور (Imagen 3.0) -->
-        <!-- ============================================== -->
-        <section id="image-gen-view" data-view="image-gen" class="flex-col flex-grow p-4 sm:p-6 hidden">
-            <!-- منطقة عرض الصور -->
-            <div id="image-results-container" class="flex-grow overflow-y-auto p-4 bg-gray-50 rounded-xl mb-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div class="text-center text-gray-500 py-10 sm:col-span-2">
-                    <p>أدخل وصفاً مفصلاً للصورة التي تريد إنشاءها.</p>
-                    <p class="text-sm mt-2">مثال: "نمر أبيض في غابة استوائية بأسلوب الرسم الزيتي، دقة عالية."</p>
+                <div className="prose prose-invert prose-p:text-gray-300 prose-headings:text-indigo-300 prose-strong:text-white whitespace-pre-wrap font-sans">
+                    {expandedContent}
                 </div>
             </div>
-            
-            <!-- نموذج توليد الصور -->
-            <form id="image-form" class="border-t border-gray-200 pt-4">
-                <div class="flex gap-2">
-                    <input
-                        type="text"
-                        id="image-input"
-                        placeholder="وصف الصورة (باللغة الإنجليزية أو العربية)..."
-                        class="flex-grow p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-pink-500 focus:border-pink-500 transition duration-200"
-                        autocomplete="off"
-                    />
-                    <button
-                        type="submit"
-                        class="bg-pink-500 text-white p-3 rounded-xl font-semibold hover:bg-pink-600 transition duration-200 disabled:opacity-50"
-                        id="image-generate-button"
-                    >
-                        توليد صورة
-                    </button>
-                </div>
-            </form>
-        </section>
-        
-        <!-- ============================================== -->
-        <!-- 3. أداة تعديل الصور (Nano-Banana / gemini-2.5-flash-image-preview) -->
-        <!-- ============================================== -->
-        <section id="image-edit-view" data-view="image-edit" class="flex-col flex-grow p-4 sm:p-6 hidden">
-            <!-- منطقة عرض الصور (الأصلية والمعدلة) -->
-            <div id="edit-results-container" class="flex-grow overflow-y-auto p-4 bg-gray-50 rounded-xl mb-4 flex flex-col md:flex-row gap-4 justify-around items-start">
-                
-                <div id="original-image-wrapper" class="w-full md:w-1/2 p-2 bg-white rounded-xl shadow-md">
-                    <h3 class="text-center font-bold text-gray-700 mb-2">الصورة الأصلية</h3>
-                    <div class="h-64 flex items-center justify-center border-2 border-dashed border-gray-300 rounded-lg">
-                         <span id="original-image-placeholder" class="text-gray-500">قم بتحميل صورة أولاً...</span>
-                         <img id="original-image-preview" class="hidden max-h-full w-auto object-contain rounded-lg mx-auto" alt="Original Image">
-                    </div>
-                </div>
+        )}
+      </div>
 
-                <div id="edited-image-wrapper" class="w-full md:w-1/2 p-2 bg-white rounded-xl shadow-md">
-                    <h3 class="text-center font-bold text-gray-700 mb-2">الصورة المعدلة</h3>
-                    <div class="h-64 flex items-center justify-center border-2 border-dashed border-gray-300 rounded-lg">
-                         <span id="edited-image-placeholder" class="text-gray-500">سيظهر الناتج هنا.</span>
-                         <img id="edited-image-preview" class="hidden max-h-full w-auto object-contain rounded-lg mx-auto" alt="Edited Image">
-                    </div>
-                </div>
-            </div>
-            
-            <!-- نموذج تعديل الصورة -->
-            <form id="image-edit-form" class="border-t border-gray-200 pt-4">
-                <div class="flex flex-col sm:flex-row gap-2 mb-3">
-                    <input type="file" id="image-edit-file" accept="image/*" class="w-full sm:w-1/3 p-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition duration-200 cursor-pointer" required/>
-                    <input
-                        type="text"
-                        id="image-edit-prompt"
-                        placeholder="أدخل تعليمات التعديل (مثال: 'اجعل السماء وردية وأضف قبعة على رأس الكلب')..."
-                        class="flex-grow p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition duration-200"
-                        autocomplete="off"
-                        required
-                    />
-                </div>
-                <button
-                    type="submit"
-                    class="w-full bg-purple-600 text-white p-3 rounded-xl font-semibold hover:bg-purple-700 transition duration-200 disabled:opacity-50"
-                    id="image-edit-button"
-                >
-                    نفّذ التعديل باستخدام (Nano-Banana)
-                </button>
-            </form>
-        </section>
-        
-
+      <style>{`
+        @keyframes fade-in {
+          from { opacity: 0; transform: translateY(10px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in {
+          animation: fade-in 0.5s ease-in-out;
+        }
+        .prose {
+            max-width: 100%;
+        }
+        html[dir="ltr"] .prose {
+            text-align: left;
+        }
+        html[dir="rtl"] .prose {
+            text-align: right;
+        }
+      `}</style>
     </div>
+  );
+};
 
-    <script>
-        // ===============================================
-        // إعدادات وبيئة Firebase و API
-        // ===============================================
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-
-        let db, auth, userId;
-
-        // إعدادات API لنماذج Gemini و Imagen
-        const API_KEY = ""; // مفتاح API سيتم توفيره تلقائيًا
-        const GEMINI_MODEL = "gemini-2.5-flash-preview-05-20";
-        const IMAGEN_MODEL = "imagen-3.0-generate-002";
-        const IMAGEN_EDIT_MODEL = "gemini-2.5-flash-image-preview"; // نموذج تعديل الصور (Nano-Banana)
-        
-        const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${API_KEY}`;
-        const IMAGEN_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${IMAGEN_MODEL}:predict?key=${API_KEY}`;
-        const IMAGEN_EDIT_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${IMAGEN_EDIT_MODEL}:generateContent?key=${API_KEY}`;
-        
-        // سجل الدردشة للحفاظ على سياق المحادثة
-        let chatHistory = [];
-        
-        // متغيرات لحالة تعديل الصورة
-        let uploadedImageBase64 = null;
-        let uploadedImageMimeType = null;
-
-        // ===============================================
-        // استدعاءات واجهة المستخدم (UI Elements)
-        // ===============================================
-        const chatView = document.getElementById('chat-view');
-        const imageGenView = document.getElementById('image-gen-view');
-        const imageEditView = document.getElementById('image-edit-view'); // ADDED
-        const loadingIndicator = document.getElementById('loading-indicator');
-        const userIdDisplay = document.getElementById('user-id-display');
-
-        // عناصر الدردشة
-        const chatForm = document.getElementById('chat-form');
-        const chatInput = document.getElementById('chat-input');
-        const chatContainer = document.getElementById('chat-container');
-        const chatSendButton = document.getElementById('chat-send-button');
-
-        // عناصر توليد الصور
-        const imageForm = document.getElementById('image-form');
-        const imageInput = document.getElementById('image-input');
-        const imageResultsContainer = document.getElementById('image-results-container');
-        const imageGenerateButton = document.getElementById('image-generate-button');
-        
-        // عناصر تعديل الصور
-        const imageEditForm = document.getElementById('image-edit-form'); // ADDED
-        const imageEditFile = document.getElementById('image-edit-file'); // ADDED
-        const imageEditPrompt = document.getElementById('image-edit-prompt'); // ADDED
-        const imageEditButton = document.getElementById('image-edit-button'); // ADDED
-        const originalImagePreview = document.getElementById('original-image-preview'); // ADDED
-        const originalImagePlaceholder = document.getElementById('original-image-placeholder'); // ADDED
-        const editedImagePreview = document.getElementById('edited-image-preview'); // ADDED
-        const editedImagePlaceholder = document.getElementById('edited-image-placeholder'); // ADDED
-
-
-        // ===============================================
-        // وظائف عامة (Utilities)
-        // ===============================================
-
-        /**
-         * تهيئة Firebase والمصادقة
-         */
-        async function initializeFirebase() {
-            if (!firebaseConfig || !window.firebase) {
-                console.error("Firebase libraries or config are missing.");
-                userIdDisplay.textContent = 'خطأ في التهيئة';
-                return;
-            }
-            const { initializeApp, getAuth, signInAnonymously, signInWithCustomToken, getFirestore } = window.firebase;
-            
-            try {
-                const app = initializeApp(firebaseConfig);
-                db = getFirestore(app);
-                auth = getAuth(app);
-
-                if (initialAuthToken) {
-                    await signInWithCustomToken(auth, initialAuthToken);
-                } else {
-                    await signInAnonymously(auth);
-                }
-                
-                // تعيين معرّف المستخدم بعد المصادقة
-                userId = auth.currentUser?.uid || crypto.randomUUID();
-                userIdDisplay.textContent = userId;
-                
-            } catch (error) {
-                console.error("Firebase initialization or auth error:", error);
-                userIdDisplay.textContent = 'خطأ في المصادقة';
-            }
-        }
-
-        /**
-         * التبديل بين واجهات الأدوات
-         */
-        function switchView(viewName) {
-            // تحديث جميع العروض: (تم إضافة imageEditView)
-            const allViews = [chatView, imageGenView, imageEditView]; 
-            const navButtons = document.querySelectorAll('.nav-btn');
-
-            allViews.forEach(view => {
-                view.classList.add('hidden');
-                view.classList.remove('flex'); 
-            });
-
-            // إظهار الواجهة المطلوبة
-            if (viewName === 'chat') {
-                chatView.classList.remove('hidden');
-                chatView.classList.add('flex');
-                chatInput.focus();
-            } else if (viewName === 'image-gen') {
-                imageGenView.classList.remove('hidden');
-                imageGenView.classList.add('flex');
-                imageInput.focus();
-            } else if (viewName === 'image-edit') { // ADDED Logic for Image Edit View
-                imageEditView.classList.remove('hidden');
-                imageEditView.classList.add('flex');
-                imageEditPrompt.focus();
-            }
-
-            // تحديث حالة أزرار التنقل
-            navButtons.forEach(btn => {
-                if (btn.getAttribute('data-view') === viewName) {
-                    btn.classList.add('active');
-                } else {
-                    btn.classList.remove('active');
-                }
-            });
-        }
-        
-        /**
-         * محاولة تنفيذ طلب جلب (fetch) مع آلية التراجع الأُسّي.
-         */
-        async function fetchWithBackoff(url, options, retries = 5) {
-            for (let i = 0; i < retries; i++) {
-                try {
-                    const response = await fetch(url, options);
-                    if (!response.ok) {
-                        if (response.status === 429 && i < retries - 1) {
-                            const delay = Math.pow(2, i) * 1000 + Math.random() * 500;
-                            await new Promise(resolve => setTimeout(resolve, delay));
-                            continue;
-                        }
-                        throw new Error(`HTTP error! status: ${response.status} - ${await response.text()}`);
-                    }
-                    return response;
-                } catch (error) {
-                    if (i === retries - 1) {
-                        throw error;
-                    }
-                    const delay = Math.pow(2, i) * 1000 + Math.random() * 500;
-                    await new Promise(resolve => setTimeout(resolve, delay));
-                }
-            }
-        }
-
-        // ===============================================
-        // 1. منطق أداة الدردشة والمحتوى (Gemini)
-        // ===============================================
-
-        /**
-         * وظيفة لإضافة رسالة إلى واجهة المستخدم (لأداة الدردشة).
-         */
-        function addMessage(text, sender) {
-            const messageDiv = document.createElement('div');
-            messageDiv.classList.add('flex', sender === 'user' ? 'justify-end' : 'justify-start');
-
-            const messageContent = document.createElement('div');
-            messageContent.classList.add('p-3', 'max-w-[85%]', 'whitespace-pre-wrap');
-            messageContent.textContent = text;
-            
-            if (sender === 'user') {
-                messageContent.classList.add('user-message');
-            } else {
-                messageContent.classList.add('ai-message');
-            }
-
-            messageDiv.appendChild(messageContent);
-            chatContainer.appendChild(messageDiv);
-            chatContainer.scrollTop = chatContainer.scrollHeight;
-        }
-
-        /**
-         * إرسال رسالة المستخدم إلى واجهة برمجة التطبيقات Gemini.
-         */
-        async function sendChatMessage(e) {
-            e.preventDefault();
-
-            const prompt = chatInput.value.trim();
-            if (!prompt) return;
-
-            addMessage(prompt, 'user');
-            chatHistory.push({ role: "user", parts: [{ text: prompt }] });
-            chatInput.value = '';
-
-            loadingIndicator.classList.remove('hidden');
-            chatInput.disabled = true;
-            chatSendButton.disabled = true;
-
-            try {
-                // تعليمات النظام لـ "Yazan Net"
-                const systemPrompt = "Act as Yazan Net, an intelligent and helpful AI assistant powered by Google's Gemini technology. Always respond in clear and concise Arabic. Use your Google Search tool if the query requires up-to-date or real-world information.";
-
-                const payload = {
-                    contents: chatHistory,
-                    systemInstruction: {
-                        parts: [{ text: systemPrompt }]
-                    },
-                    tools: [{ "google_search": {} }],
-                };
-
-                const response = await fetchWithBackoff(GEMINI_API_URL, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-
-                const result = await response.json();
-                
-                const candidate = result.candidates?.[0];
-                let aiResponseText = 'عذراً، حدث خطأ في الحصول على الرد.';
-
-                if (candidate && candidate.content?.parts?.[0]?.text) {
-                    aiResponseText = candidate.content.parts[0].text;
-                    addMessage(aiResponseText, 'ai');
-                    chatHistory.push({ role: "model", parts: [{ text: aiResponseText }] });
-                } else {
-                    console.error("Unexpected API response format:", result);
-                    addMessage(aiResponseText, 'ai');
-                }
-
-            } catch (error) {
-                console.error('Error communicating with Gemini API:', error);
-                addMessage('عذراً، حدث خطأ أثناء الاتصال بالخدمة. يرجى المحاولة مرة أخرى.', 'ai');
-            } finally {
-                loadingIndicator.classList.add('hidden');
-                chatInput.disabled = false;
-                chatSendButton.disabled = false;
-                chatInput.focus();
-            }
-        }
-        
-        // ===============================================
-        // 2. منطق أداة توليد الصور (Imagen)
-        // ===============================================
-
-        /**
-         * وظيفة لعرض الصورة المولدة في واجهة المستخدم.
-         */
-        function displayGeneratedImage(base64Data, prompt) {
-            // قم بإنشاء حاوية للصورة
-            const imageWrapper = document.createElement('div');
-            imageWrapper.className = 'relative group rounded-xl overflow-hidden shadow-lg transform hover:scale-[1.02] transition duration-300';
-            
-            // عنصر الصورة
-            const img = document.createElement('img');
-            img.src = `data:image/png;base64,${base64Data}`;
-            img.alt = prompt;
-            img.className = 'w-full h-auto object-cover rounded-xl';
-            
-            // نص الوصف (Prompt)
-            const caption = document.createElement('div');
-            caption.className = 'absolute bottom-0 inset-x-0 bg-black bg-opacity-60 text-white text-xs p-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300';
-            caption.textContent = prompt;
-            
-            imageWrapper.appendChild(img);
-            imageWrapper.appendChild(caption);
-            
-            // أضف الصورة إلى بداية الحاوية
-            imageResultsContainer.prepend(imageWrapper);
-            
-            // إزالة رسالة الترحيب الافتراضية إذا كانت موجودة
-            const defaultMessage = imageResultsContainer.querySelector('.text-center');
-            if (defaultMessage) {
-                defaultMessage.remove();
-            }
-        }
-
-        /**
-         * إرسال وصف الصورة إلى واجهة برمجة التطبيقات Imagen 3.0.
-         */
-        async function generateImage(e) {
-            e.preventDefault();
-
-            const prompt = imageInput.value.trim();
-            if (!prompt) return;
-
-            // عرض رسالة للمستخدم
-            imageResultsContainer.innerHTML = `<div class="text-center text-gray-500 py-10 sm:col-span-2">
-                <p>جاري توليد الصورة لوصفك: <span class="font-bold text-[#007bff]">"${prompt}"</span>...</p>
-            </div>`;
-            
-            imageInput.value = '';
-
-            loadingIndicator.classList.remove('hidden');
-            imageInput.disabled = true;
-            imageGenerateButton.disabled = true;
-            
-            try {
-                const payload = { 
-                    instances: [{ prompt: prompt }], 
-                    parameters: { "sampleCount": 1 } 
-                };
-
-                const response = await fetchWithBackoff(IMAGEN_API_URL, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-                
-                const result = await response.json();
-                
-                if (result.predictions && result.predictions.length > 0 && result.predictions[0].bytesBase64Encoded) {
-                    const base64Data = result.predictions[0].bytesBase64Encoded;
-                    // عرض الصورة
-                    displayGeneratedImage(base64Data, prompt);
-
-                } else {
-                    console.error("Unexpected Imagen API response format:", result);
-                    imageResultsContainer.innerHTML = `<div class="text-center text-red-500 py-10 sm:col-span-2">
-                        عذراً، لم يتمكن نموذج Imagen من توليد الصورة.
-                    </div>`;
-                }
-
-            } catch (error) {
-                console.error('Error communicating with Imagen API:', error);
-                imageResultsContainer.innerHTML = `<div class="text-center text-red-500 py-10 sm:col-span-2">
-                    عذراً، حدث خطأ أثناء الاتصال بالخدمة لتوليد الصورة. يرجى المحاولة مرة أخرى.
-                </div>`;
-            } finally {
-                loadingIndicator.classList.add('hidden');
-                imageInput.disabled = false;
-                imageGenerateButton.disabled = false;
-                imageInput.focus();
-            }
-        }
-
-        // ===============================================
-        // 3. منطق أداة تعديل الصور (Nano-Banana)
-        // ===============================================
-
-        /**
-         * معالجة تحميل الملف وعرض معاينة الصورة الأصلية.
-         */
-        imageEditFile.addEventListener('change', (event) => {
-            const file = event.target.files[0];
-            if (!file) return;
-
-            uploadedImageMimeType = file.type;
-            const reader = new FileReader();
-
-            reader.onload = (e) => {
-                // استخراج بيانات Base64 فقط (الجزء الذي يلي الفاصلة)
-                const base64String = e.target.result.split(',')[1];
-                uploadedImageBase64 = base64String;
-
-                // عرض المعاينة للصورة الأصلية
-                originalImagePreview.src = e.target.result;
-                originalImagePreview.classList.remove('hidden');
-                originalImagePlaceholder.classList.add('hidden');
-                
-                // إعادة تعيين منطقة الصورة المعدلة
-                editedImagePreview.classList.add('hidden');
-                editedImagePlaceholder.classList.remove('hidden');
-                editedImagePlaceholder.textContent = 'سيظهر الناتج هنا.';
-            };
-
-            reader.readAsDataURL(file);
-        });
-
-        /**
-         * إرسال الصورة الأصلية والتعليمات النصية إلى نموذج التعديل.
-         */
-        async function handleImageEdit(e) {
-            e.preventDefault();
-
-            const prompt = imageEditPrompt.value.trim();
-            if (!prompt || !uploadedImageBase64) {
-                editedImagePlaceholder.textContent = 'يجب تحميل صورة وإدخال وصف للتعديل.';
-                editedImagePlaceholder.classList.remove('hidden');
-                return;
-            }
-            
-            editedImagePlaceholder.textContent = 'جاري تعديل الصورة بواسطة (Nano-Banana)...';
-            editedImagePlaceholder.classList.remove('hidden');
-            editedImagePreview.classList.add('hidden');
-
-            loadingIndicator.classList.remove('hidden');
-            imageEditButton.disabled = true;
-            imageEditPrompt.disabled = true;
-            imageEditFile.disabled = true;
-            
-            try {
-                // حمولة API لتعديل الصورة (نص + صورة كـ inlineData)
-                const payload = {
-                    contents: [
-                        {
-                            role: "user",
-                            parts: [
-                                { text: prompt },
-                                {
-                                    inlineData: {
-                                        mimeType: uploadedImageMimeType,
-                                        data: uploadedImageBase64
-                                    }
-                                }
-                            ]
-                        }
-                    ],
-                    // طلب أن تكون الاستجابة نصاً وصورة
-                    generationConfig: {
-                        responseModalities: ['TEXT', 'IMAGE'] 
-                    },
-                };
-                
-                const response = await fetchWithBackoff(IMAGEN_EDIT_API_URL, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-                
-                const result = await response.json();
-                
-                // استخراج بيانات Base64 للصورة من الاستجابة
-                const base64Data = result?.candidates?.[0]?.content?.parts?.find(p => p.inlineData)?.inlineData?.data;
-
-                if (base64Data) {
-                    editedImagePreview.src = `data:${uploadedImageMimeType};base64,${base64Data}`;
-                    editedImagePreview.classList.remove('hidden');
-                    editedImagePlaceholder.classList.add('hidden');
-                } else {
-                    console.error("Image editing response error:", result);
-                    editedImagePlaceholder.textContent = 'عذراً، حدث خطأ في معالجة التعديل.';
-                    editedImagePlaceholder.classList.remove('hidden');
-                }
-
-            } catch (error) {
-                console.error('Error during image editing:', error);
-                editedImagePlaceholder.textContent = 'فشل الاتصال بالخدمة. يرجى المحاولة لاحقاً.';
-                editedImagePlaceholder.classList.remove('hidden');
-            } finally {
-                loadingIndicator.classList.add('hidden');
-                imageEditButton.disabled = false;
-                imageEditPrompt.disabled = false;
-                imageEditFile.disabled = false;
-            }
-        }
-
-
-        // ===============================================
-        // تهيئة التطبيق (Initialization)
-        // ===============================================
-        
-        // 1. تهيئة Firebase عند تحميل النافذة
-        window.onload = () => {
-             initializeFirebase();
-             // 2. إرفاق مستمعي الأحداث بالتنقل والنماذج
-             document.querySelectorAll('.nav-btn').forEach(button => {
-                 button.addEventListener('click', () => switchView(button.getAttribute('data-view')));
-             });
-             
-             chatForm.addEventListener('submit', sendChatMessage);
-             imageForm.addEventListener('submit', generateImage);
-             imageEditForm.addEventListener('submit', handleImageEdit); // ADDED Listener
-             
-             // 3. عرض واجهة الدردشة افتراضياً
-             switchView('chat');
-        };
-
-    </script>
-</body>
-</html>
+export default IdeaGenerator;
