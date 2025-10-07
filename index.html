@@ -1,1 +1,519 @@
-https://ai.studio/apps/drive/1xfFCQoZ5I48R3D838uovC-6jQ8Bf7cA6
+import React, { useState, useEffect, useCallback } from 'react';
+
+// --- أيقونات SVG ---
+// تم تضمين الأيقونات هنا للحفاظ على كل شيء في ملف واحد
+const CopyIcon = (props) => (
+  <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
+    <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
+  </svg>
+);
+
+const SparklesIcon = (props) => (
+  <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="m12 3-1.9 5.8-5.8 1.9 5.8 1.9L12 21l1.9-5.8 5.8-1.9-5.8-1.9L12 3z" />
+    <path d="M5 3v4" />
+    <path d="M19 17v4" />
+    <path d="M3 5h4" />
+    <path d="M17 19h4" />
+  </svg>
+);
+
+const BackIcon = (props) => (
+  <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="m15 18-6-6 6-6" />
+  </svg>
+);
+
+const ContentIcon = (props) => (
+  <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect width="18" height="18" x="3" y="3" rx="2" />
+    <path d="M7 8h10" />
+    <path d="M7 12h10" />
+    <path d="M7 16h5" />
+  </svg>
+);
+
+const CookingIcon = (props) => (
+    <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a5 5 0 0 0-5 5v1.5a2.5 2.5 0 0 1-5 0V5a5 5 0 0 0 5-5"/><path d="M12 2a5 5 0 0 1 5 5v1.5a2.5 2.5 0 0 0 5 0V5a5 5 0 0 1-5-5"/><path d="M12 12a5 5 0 0 0-5 5v6h10v-6a5 5 0 0 0-5-5Z"/></svg>
+);
+
+const TravelIcon = (props) => (
+    <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/><path d="M22 12h-4.2a2.2 2.2 0 0 0-2.2 2.2V16"/><path d="M6.2 14A2.2 2.2 0 0 0 4 11.8V10h0a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h1.8"/></svg>
+);
+
+const FitnessIcon = (props) => (
+    <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5H9.28a2 2 0 0 0-1.7.9L5.2 9.4A2 2 0 0 0 4 11v6a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-6a2 2 0 0 0-1.2-1.8L16.42 6.9a2 2 0 0 0-1.7-.9H12Z"/><path d="M6 19h12"/><path d="M10 5v14"/><path d="M14 5v14"/></svg>
+);
+
+const TechIcon = (props) => (
+    <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="12" x="3" y="10" rx="2"/><path d="M7 10V7a5 5 0 0 1 10 0v3"/><path d="M12 14v2"/><path d="M12 5v-1"/></svg>
+);
+
+// --- بيانات التطبيق ---
+
+const translations = {
+  ar: {
+    title: "مولّد أفكار المحتوى",
+    selectCategory: "اختر فئة للبدء",
+    noIdeasInCategory: "لا توجد أفكار في هذه الفئة.",
+    backToCategories: "العودة إلى الفئات",
+    copyIdea: "نسخ الفكرة",
+    newIdea: "فكرة جديدة",
+    expandIdea: "توسيع الفكرة إلى خطة محتوى",
+    ideaCopiedToast: "تم نسخ الفكرة!",
+    generatingContent: "جاري إنشاء المحتوى...",
+    errorGeneratingContent: "حدث خطأ أثناء إنشاء المحتوى. الرجاء المحاولة مرة أخرى.",
+    contentPlan: "خطة المحتوى",
+    copyContent: "نسخ الخطة",
+    language: "English",
+  },
+  en: {
+    title: "Content Idea Generator",
+    selectCategory: "Select a Category to Start",
+    noIdeasInCategory: "No ideas in this category.",
+    backToCategories: "Back to Categories",
+    copyIdea: "Copy Idea",
+    newIdea: "New Idea",
+    expandIdea: "Expand Idea into a Content Plan",
+    ideaCopiedToast: "Idea Copied!",
+    generatingContent: "Generating content...",
+    errorGeneratingContent: "Error generating content. Please try again.",
+    contentPlan: "Content Plan",
+    copyContent: "Copy Plan",
+    language: "العربية",
+  }
+};
+
+const categories = [
+  {
+    id: 'cooking',
+    name: { ar: 'الطبخ', en: 'Cooking' },
+    icon: CookingIcon,
+    ideas: {
+      ar: [
+        'وصفة سريعة في 15 ثانية',
+        '3 أخطاء شائعة عند تحضير الكيك',
+        'كيف تحول طبق عادي إلى طبق فاخر؟',
+        'أداة مطبخية غيرت حياتي',
+        'تحضير وجبات الأسبوع في ساعة واحدة'
+      ],
+      en: [
+        'A quick 15-second recipe',
+        '3 common mistakes when baking a cake',
+        'How to turn a simple dish into a fancy one?',
+        'A kitchen gadget that changed my life',
+        'Meal prep for the week in one hour'
+      ]
+    }
+  },
+  {
+    id: 'travel',
+    name: { ar: 'السفر', en: 'Travel' },
+    icon: TravelIcon,
+    ideas: {
+      ar: [
+        'أفضل 3 أماكن سرية في مدينتك',
+        'أهم نصيحة عند حجز تذاكر الطيران',
+        'ماذا يوجد في حقيبة سفري؟',
+        'كيف تسافر بميزانية محدودة؟',
+        'وجهة سفر لا يعرفها الكثيرون'
+      ],
+      en: [
+        'Top 3 secret spots in your city',
+        'The most important tip for booking flights',
+        'What’s in my travel bag?',
+        'How to travel on a limited budget?',
+        'A travel destination few people know about'
+      ]
+    }
+  },
+    {
+    id: 'fitness',
+    name: { ar: 'اللياقة البدنية', en: 'Fitness' },
+    icon: FitnessIcon,
+    ideas: {
+      ar: [
+        'تمرين سريع لمدة 5 دقائق',
+        'تصحيح أشهر خطأ في تمرين القرفصاء',
+        '3 وجبات خفيفة صحية قبل التمرين',
+        'كيف تحافظ على حماسك للرياضة؟',
+        'أفضل تمرين لعضلات البطن'
+      ],
+      en: [
+        'A quick 5-minute workout',
+        'Correcting the most common squat mistake',
+        '3 healthy pre-workout snacks',
+        'How to stay motivated to exercise?',
+        'The best exercise for abs'
+      ]
+    }
+  },
+  {
+    id: 'tech',
+    name: { ar: 'التقنية', en: 'Tech' },
+    icon: TechIcon,
+    ideas: {
+      ar: [
+        'ميزة مخفية في هاتفك لا تعرفها',
+        '3 تطبيقات ستزيد من إنتاجيتك',
+        'كيف تحمي حساباتك من الاختراق؟',
+        'مراجعة سريعة لأحدث جهاز',
+        'اختصار لوحة مفاتيح سيغير حياتك'
+      ],
+      en: [
+        'A hidden feature in your phone you don’t know',
+        '3 apps that will boost your productivity',
+        'How to protect your accounts from hacking?',
+        'Quick review of the latest gadget',
+        'A keyboard shortcut that will change your life'
+      ]
+    }
+  }
+];
+
+// --- مكون Spinner ---
+const LoadingSpinner = ({ text }) => (
+    <div className="flex items-center justify-center gap-2 text-indigo-300">
+        <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg>
+        <span>{text}</span>
+    </div>
+);
+
+
+// --- مكون مولّد الأفكار (المعدّل) ---
+const IdeaGenerator = ({ category, onBack, language }) => {
+  const t = translations[language];
+  const [currentIdea, setCurrentIdea] = useState('');
+  const [usedIdeas, setUsedIdeas] = useState(new Set());
+  const [showToast, setShowToast] = useState(false);
+  const [key, setKey] = useState(0);
+  const [isLoading, setIsLoading] = useState(false);
+  const [expandedContent, setExpandedContent] = useState('');
+  const [error, setError] = useState('');
+
+  const generateInitialIdea = useCallback(() => {
+    const allIdeas = category.ideas[language];
+    if (!allIdeas || allIdeas.length === 0) {
+      setCurrentIdea(t.noIdeasInCategory);
+      setUsedIdeas(new Set());
+      return;
+    }
+
+    const firstIdea = allIdeas[Math.floor(Math.random() * allIdeas.length)];
+    setCurrentIdea(firstIdea);
+    setUsedIdeas(new Set([firstIdea]));
+    
+    setExpandedContent('');
+    setError('');
+    setShowToast(false);
+    setKey(prevKey => prevKey + 1);
+  }, [category, language, t.noIdeasInCategory]);
+
+  useEffect(() => {
+    generateInitialIdea();
+  }, [generateInitialIdea]);
+
+  const handleGenerateNewIdea = () => {
+    setExpandedContent('');
+    setError('');
+
+    const allIdeas = category.ideas[language];
+    let availableIdeas = allIdeas.filter(idea => !usedIdeas.has(idea));
+
+    if (availableIdeas.length === 0) {
+      // Reset if all ideas are used
+      const newIdea = allIdeas[Math.floor(Math.random() * allIdeas.length)];
+      setCurrentIdea(newIdea);
+      setUsedIdeas(new Set([newIdea]));
+    } else {
+      const newIdea = availableIdeas[Math.floor(Math.random() * availableIdeas.length)];
+      setCurrentIdea(newIdea);
+      setUsedIdeas(prevUsed => new Set(prevUsed).add(newIdea));
+    }
+
+    setKey(prevKey => prevKey + 1);
+  };
+
+  const copyToClipboard = (text) => {
+    // navigator.clipboard.writeText(text) can fail in secure contexts like iframes
+    const textArea = document.createElement("textarea");
+    textArea.value = text;
+    textArea.style.position = "fixed"; 
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    try {
+        document.execCommand('copy');
+        setShowToast(true);
+        setTimeout(() => setShowToast(false), 2000);
+    } catch (err) {
+        console.error('Fallback: Oops, unable to copy', err);
+    }
+    document.body.removeChild(textArea);
+  };
+
+  const handleExpandIdea = async () => {
+    if (!currentIdea || currentIdea === t.noIdeasInCategory) return;
+    setIsLoading(true);
+    setExpandedContent('');
+    setError('');
+    
+    const prompts = {
+        ar: `
+            أنت خبير في صناعة المحتوى لمنصة انستغرام. بالنظر إلى الفئة "${category.name['ar']}" والفكرة التالية: "${currentIdea}".
+            قم بإنشاء خطة محتوى مفصلة ومبتكرة يمكن استخدامها لإنشاء فيديو ريلز (Instagram Reel).
+            الخطة يجب أن تتضمن الأقسام التالية بوضوح:
+            1. **عنوان جذاب (Hook):** جملة قصيرة لجذب الانتباه في أول 3 ثوانٍ.
+            2. **السيناريو/الخطوات:** نص مقترح للفيديو، مقسم إلى مشاهد أو خطوات واضحة.
+            3. **اقتراحات بصرية:** أفكار حول كيفية تصوير كل مشهد، الزوايا، والانتقالات.
+            4. **نص إضافي (Overlay Text):** أي نصوص يمكن إضافتها على الفيديو للتوضيح.
+            5. **صوت مقترح (Audio):** نوع الموسيقى أو الصوت الرائج (Trending Audio) الذي يناسب الفكرة.
+            6. **الكابشن (Caption):** نص للكابشن يتضمن سؤالاً للتفاعل.
+            7. **هاشتاجات:** 5 هاشتاجات ذات صلة.
+        `,
+        en: `
+            You are an expert Instagram content creator. Given the category "${category.name['en']}" and the following idea: "${currentIdea}".
+            Generate a detailed and creative content plan for an Instagram Reel.
+            The plan must clearly include the following sections:
+            1. **Hook:** A short sentence to grab attention in the first 3 seconds.
+            2. **Scenario/Steps:** A proposed script for the video, divided into clear scenes or steps.
+            3. **Visual Suggestions:** Ideas on how to film each scene, angles, and transitions.
+            4. **Overlay Text:** Any text that can be added on the video for clarification.
+            5. **Suggested Audio:** The type of music or a trending audio that fits the idea.
+            6. **Caption:** A caption text that includes a question to encourage engagement.
+            7. **Hashtags:** 5 relevant hashtags.
+        `
+    };
+
+    const apiKey = ""; // سيتم توفير المفتاح تلقائياً في بيئة التشغيل
+    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+
+    const payload = {
+        contents: [{ parts: [{ text: prompts[language] }] }],
+    };
+
+    try {
+        const response = await fetch(apiUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) {
+            throw new Error(`API call failed with status: ${response.status}`);
+        }
+
+        const result = await response.json();
+        const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
+
+        if (text) {
+            setExpandedContent(text);
+        } else {
+            throw new Error("Invalid response structure from API.");
+        }
+
+    } catch (e) {
+        console.error(e);
+        setError(t.errorGeneratingContent);
+    } finally {
+        setIsLoading(false);
+    }
+  };
+
+  const CategoryIcon = category.icon;
+
+  return (
+    <div className="flex flex-col items-center w-full px-4">
+      {showToast && (
+        <div className="fixed top-5 right-5 bg-green-500 text-white py-2 px-4 rounded-lg shadow-lg animate-bounce z-50">
+          {t.ideaCopiedToast}
+        </div>
+      )}
+
+      <button
+        onClick={onBack}
+        className="self-start mb-6 flex items-center gap-2 text-indigo-300 hover:text-indigo-100 transition-colors duration-200"
+        disabled={isLoading}
+      >
+        <BackIcon className="w-5 h-5" />
+        <span>{t.backToCategories}</span>
+      </button>
+
+      <div className="w-full max-w-2xl bg-gray-800/60 backdrop-blur-md border border-gray-700/60 rounded-2xl p-6 md:p-8 text-center shadow-xl shadow-indigo-900/20">
+        <div className="flex justify-center items-center gap-4 mb-6">
+            <div className="flex items-center justify-center h-12 w-12 rounded-full bg-gradient-to-br from-purple-600 to-indigo-600">
+                <CategoryIcon className="h-7 w-7 text-white" />
+            </div>
+            <h2 className="text-3xl font-bold text-gray-100">{category.name[language]}</h2>
+        </div>
+        
+        <div className="min-h-[120px] flex items-center justify-center p-4 my-6 bg-gray-900/50 rounded-lg border border-gray-700">
+          <p key={key} className="text-2xl font-medium text-indigo-200 animate-fade-in text-center">
+            {currentIdea}
+          </p>
+        </div>
+
+        <div className="flex flex-col sm:flex-row gap-4">
+          <button
+            onClick={() => copyToClipboard(currentIdea)}
+            disabled={isLoading || !currentIdea || currentIdea === t.noIdeasInCategory}
+            className="flex-1 flex items-center justify-center gap-2 bg-gray-700 hover:bg-gray-600 text-white font-semibold py-3 px-6 rounded-lg transition-colors duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <CopyIcon className="w-5 h-5" />
+            <span>{t.copyIdea}</span>
+          </button>
+          <button
+            onClick={handleGenerateNewIdea}
+            disabled={isLoading}
+            className="flex-1 flex items-center justify-center gap-2 bg-gray-700 hover:bg-gray-600 text-white font-semibold py-3 px-6 rounded-lg transition-colors duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <SparklesIcon className="w-5 h-5" />
+            <span>{t.newIdea}</span>
+          </button>
+        </div>
+         <div className="mt-4">
+            <button
+                onClick={handleExpandIdea}
+                disabled={isLoading || !currentIdea || currentIdea === t.noIdeasInCategory}
+                className="w-full flex items-center justify-center gap-3 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-300 transform hover:scale-105 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed disabled:scale-100"
+            >
+                <ContentIcon className="w-6 h-6" />
+                <span>{t.expandIdea}</span>
+            </button>
+        </div>
+      </div>
+      
+      <div className="w-full max-w-2xl mt-8">
+        {isLoading && <LoadingSpinner text={t.generatingContent} />}
+        {error && <p className="text-red-400 bg-red-900/50 border border-red-700 p-4 rounded-lg text-center">{error}</p>}
+        {expandedContent && (
+            <div className="bg-gray-800/40 backdrop-blur-md border border-gray-700/40 rounded-2xl p-6 md:p-8 shadow-lg animate-fade-in">
+                <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-2xl font-bold text-indigo-200">{t.contentPlan}</h3>
+                    <button 
+                        onClick={() => copyToClipboard(expandedContent)}
+                        className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors p-2 rounded-md bg-gray-700/50 hover:bg-gray-700"
+                        aria-label="Copy content plan"
+                    >
+                        <CopyIcon className="w-5 h-5" />
+                        <span className="hidden sm:inline">{t.copyContent}</span>
+                    </button>
+                </div>
+                <div className={`prose prose-invert max-w-none prose-p:text-gray-300 prose-headings:text-indigo-300 prose-strong:text-white whitespace-pre-wrap font-sans ${language === 'ar' ? 'text-right' : 'text-left'}`}>
+                  {expandedContent.split('\n').map((line, i) => <p key={i}>{line}</p>)}
+                </div>
+            </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// --- مكون شبكة الفئات ---
+const CategoryGrid = ({ onSelectCategory, language }) => {
+  const t = translations[language];
+  return (
+    <div className="w-full max-w-3xl px-4 text-center">
+      <h2 className="text-3xl md:text-4xl font-bold text-white mb-8">{t.selectCategory}</h2>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
+        {categories.map(category => {
+          const CategoryIcon = category.icon;
+          return (
+            <button
+              key={category.id}
+              onClick={() => onSelectCategory(category)}
+              className="group flex flex-col items-center justify-center gap-3 p-6 bg-gray-800/60 backdrop-blur-sm border border-gray-700/60 rounded-xl hover:bg-gray-700/80 hover:border-indigo-500 transition-all duration-300 transform hover:-translate-y-1"
+            >
+              <div className="flex items-center justify-center h-14 w-14 rounded-full bg-gradient-to-br from-purple-600 to-indigo-600 group-hover:scale-110 transition-transform duration-300">
+                <CategoryIcon className="h-8 w-8 text-white" />
+              </div>
+              <span className="font-semibold text-gray-200">{category.name[language]}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
+
+// --- المكون الرئيسي للتطبيق ---
+export default function App() {
+  const [selectedCategory, setSelectedCategory] = useState(null);
+  const [language, setLanguage] = useState('ar');
+
+  const t = translations[language];
+
+  const handleSelectCategory = (category) => {
+    setSelectedCategory(category);
+  };
+
+  const handleBack = () => {
+    setSelectedCategory(null);
+  };
+
+  const toggleLanguage = () => {
+    const newLang = language === 'ar' ? 'en' : 'ar';
+    setLanguage(newLang);
+    document.documentElement.dir = newLang === 'ar' ? 'rtl' : 'ltr';
+  };
+  
+  // Set initial direction
+  useEffect(() => {
+    document.documentElement.dir = language === 'ar' ? 'rtl' : 'ltr';
+    document.body.className = "bg-gray-900 text-white font-sans";
+  }, [language]);
+
+
+  return (
+    <div className="min-h-screen w-full flex flex-col items-center justify-center p-4 bg-gray-900 bg-grid-indigo-500/[0.2] relative">
+       <div className="absolute top-4 right-4 z-10">
+         <button 
+           onClick={toggleLanguage}
+           className="px-4 py-2 bg-gray-700/80 backdrop-blur-sm border border-gray-600 rounded-md text-white hover:bg-gray-600 transition-colors"
+         >
+           {t.language}
+         </button>
+       </div>
+
+      <header className="text-center mb-10">
+        <h1 className="text-4xl md:text-5xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-indigo-400">
+          {t.title}
+        </h1>
+      </header>
+      
+      <main className="w-full flex justify-center">
+        {selectedCategory ? (
+          <IdeaGenerator
+            category={selectedCategory}
+            onBack={handleBack}
+            language={language}
+          />
+        ) : (
+          <CategoryGrid onSelectCategory={handleSelectCategory} language={language} />
+        )}
+      </main>
+
+      <style>{`
+        body {
+          background-color: #111827; /* bg-gray-900 */
+        }
+        @keyframes fade-in {
+          from { opacity: 0; transform: translateY(10px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in {
+          animation: fade-in 0.5s ease-in-out;
+        }
+        .bg-grid-indigo-500/[0.2] {
+            background-image: linear-gradient(to right, rgba(99, 102, 241, 0.1) 1px, transparent 1px), linear-gradient(to bottom, rgba(99, 102, 241, 0.1) 1px, transparent 1px);
+            background-size: 3rem 3rem;
+        }
+      `}</style>
+    </div>
+  );
+}
